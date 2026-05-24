@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SAG AR - Gilamni Xonada Ko'rish</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            overflow: hidden;
+            background-color: #111;
+            font-family: 'Inter', sans-serif;
+        }
+        
+        /* Kamera yoki orqa fon */
+        #ar-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            overflow: hidden;
+            /* Kamera ishlamasa chiqadigan fon */
+            background-image: url('https://images.unsplash.com/photo-1600585154340-be6161a56a0c?ixlib=rb-4.0.3&auto=format&fit=crop&w=1200&q=80');
+            background-size: cover;
+            background-position: center bottom;
+        }
+
+        #camera-stream {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: none;
+            z-index: 2;
+        }
+
+        #fallback-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(to bottom, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.5) 100%);
+            z-index: 3;
+        }
+
+        /* Gilam obyekti */
+        #carpet-object {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 300px;
+            height: 400px;
+            /* 3D Perspektiva - polga yotqizish effekti */
+            transform: translate(-50%, -10%) perspective(800px) rotateX(65deg) scale(1);
+            transform-origin: center center;
+            background-image: url('https://api.cabinet.smart-market.uz/uploads/images/8a8386020c15bd0362221b19');
+            background-size: cover;
+            background-position: center;
+            border-radius: 6px;
+            box-shadow: 0 30px 40px -10px rgba(0, 0, 0, 0.8), 0 20px 20px -10px rgba(0, 0, 0, 0.6);
+            z-index: 10;
+            transition: background-image 0.3s ease;
+            cursor: move;
+        }
+
+        /* UI Panellar */
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 20;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .pointer-events-auto {
+            pointer-events: auto;
+        }
+
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+
+        /* Slayderlar */
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            background: transparent;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 20px;
+            width: 20px;
+            border-radius: 50%;
+            background: #1e3a8a;
+            cursor: pointer;
+            margin-top: -8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            cursor: pointer;
+            background: #cbd5e1;
+            border-radius: 2px;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- AR Sahnasi -->
+    <div id="ar-container">
+        <!-- Kamera videosi -->
+        <video id="camera-stream" autoplay playsinline></video>
+        <div id="fallback-overlay"></div>
+        
+        <!-- Gilam rasmi -->
+        <div id="carpet-object"></div>
+    </div>
+
+    <!-- UI Boshqaruv qatlami -->
+    <div id="ui-layer">
+        
+        <!-- Yuqori panel (Logotip va Kamera tugmasi) -->
+        <div class="p-4 sm:p-6 w-full flex justify-between items-start pointer-events-auto">
+            <div class="glass-panel px-4 py-2 rounded-2xl shadow-lg flex items-center gap-3">
+                <div class="bg-blue-900 text-white p-1.5 rounded-lg">
+                    <i class="fa-solid fa-cube text-lg"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-blue-900 text-sm sm:text-base leading-tight" style="font-family: 'Poppins', sans-serif;">SAG AR View</h1>
+                    <p class="text-[10px] sm:text-xs text-slate-500 font-semibold">Kengaytirilgan borliq</p>
+                </div>
+            </div>
+
+            <div class="flex gap-2">
+                <button onclick="toggleCamera()" id="cam-btn" class="glass-panel w-10 h-10 sm:w-12 sm:h-12 rounded-full flex justify-center items-center text-blue-900 hover:bg-white transition shadow-lg">
+                    <i class="fa-solid fa-camera"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Pastki panel (Gilamni sozlash va Tanlash) -->
+        <div class="w-full pointer-events-auto flex flex-col items-center">
+            
+            <!-- Sozlamalar paneli -->
+            <div id="adjust-panel" class="glass-panel w-[90%] max-w-md p-4 rounded-2xl shadow-lg mb-4 transform translate-y-4 opacity-0 hidden transition-all duration-300">
+                <div class="flex justify-between items-center mb-3">
+                    <h3 class="text-xs font-bold text-slate-700"><i class="fa-solid fa-sliders text-amber-500 mr-1"></i> Gilamni moslashtirish</h3>
+                    <button onclick="toggleAdjust()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+                
+                <div class="space-y-4">
+                    <!-- O'lchami -->
+                    <div>
+                        <div class="flex justify-between text-[10px] font-semibold text-slate-500 mb-1">
+                            <span>Kichik</span>
+                            <span>Katta</span>
+                        </div>
+                        <input type="range" id="scale-slider" min="0.5" max="2.5" step="0.1" value="1">
+                    </div>
+                    <!-- Joylashuvi -->
+                    <div>
+                        <div class="flex justify-between text-[10px] font-semibold text-slate-500 mb-1">
+                            <span>Uzoqroq</span>
+                            <span>Yaqinroq</span>
+                        </div>
+                        <input type="range" id="y-slider" min="-50" max="50" step="1" value="-10">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Asosiy menyu -->
+            <div class="glass-panel w-full sm:w-[95%] max-w-lg sm:rounded-t-3xl p-4 sm:p-6 shadow-[0_-10px_40px_rgba(0,0,0,0.1)]">
+                
+                <div class="flex justify-between items-center mb-3 px-2">
+                    <h2 class="font-bold text-slate-800 text-lg" style="font-family: 'Poppins', sans-serif;">Kolleksiyalar</h2>
+                    <button onclick="toggleAdjust()" class="text-xs font-bold text-blue-900 bg-blue-50 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition">
+                        <i class="fa-solid fa-up-down-left-right mr-1"></i> O'lchash
+                    </button>
+                </div>
+
+                <!-- Gilamlar karuseli -->
+                <div class="flex overflow-x-auto gap-3 pb-4 px-2 no-scrollbar snap-x">
+                    
+                    <div onclick="changeCarpet('https://api.cabinet.smart-market.uz/uploads/images/8a8386020c15bd0362221b19', 'ISFAHAN', '3 600 000', this)" class="carpet-thumb border-2 border-blue-900 snap-center shrink-0 w-24 h-24 rounded-xl overflow-hidden cursor-pointer relative shadow-md">
+                        <img src="https://api.cabinet.smart-market.uz/uploads/images/8a8386020c15bd0362221b19" class="w-full h-full object-cover">
+                        <div class="absolute bottom-0 w-full bg-black/50 text-white text-[9px] text-center py-1 font-bold">ISFAHAN</div>
+                    </div>
+
+                    <div onclick="changeCarpet('https://castore.uz/upload/iblock/159/9.jpg', 'ISFAHAN 2', '2 500 000', this)" class="carpet-thumb border-2 border-transparent snap-center shrink-0 w-24 h-24 rounded-xl overflow-hidden cursor-pointer relative shadow-md">
+                        <img src="https://castore.uz/upload/iblock/159/9.jpg" class="w-full h-full object-cover">
+                        <div class="absolute bottom-0 w-full bg-black/50 text-white text-[9px] text-center py-1 font-bold">ISFAHAN 2</div>
+                    </div>
+
+                    <div onclick="changeCarpet('https://castore.uz/upload/iblock/37e/FT1252_VM31_015.gif', 'ISFAHAN 3', '3 600 000', this)" class="carpet-thumb border-2 border-transparent snap-center shrink-0 w-24 h-24 rounded-xl overflow-hidden cursor-pointer relative shadow-md">
+                        <img src="https://castore.uz/upload/iblock/37e/FT1252_VM31_015.gif" class="w-full h-full object-cover">
+                        <div class="absolute bottom-0 w-full bg-black/50 text-white text-[9px] text-center py-1 font-bold">ISFAHAN 3</div>
+                    </div>
+
+                    <div onclick="changeCarpet('https://olcha.uz/image/700x700/products/2022-06-27/kover-troya-4557-kremovyy-seryy-61942-0.jpeg', 'Troya', '2 800 000', this)" class="carpet-thumb border-2 border-transparent snap-center shrink-0 w-24 h-24 rounded-xl overflow-hidden cursor-pointer relative shadow-md">
+                        <img src="https://olcha.uz/image/700x700/products/2022-06-27/kover-troya-4557-kremovyy-seryy-61942-0.jpeg" class="w-full h-full object-cover">
+                        <div class="absolute bottom-0 w-full bg-black/50 text-white text-[9px] text-center py-1 font-bold">Troya</div>
+                    </div>
+                </div>
+
+                <!-- Xarid qismi -->
+                <div class="bg-white rounded-xl p-3 flex justify-between items-center shadow-sm border border-slate-100 mt-2">
+                    <div>
+                        <p id="carpet-name" class="font-bold text-slate-800 text-sm">ISFAHAN Gilam</p>
+                        <p class="text-blue-900 font-bold text-sm"><span id="carpet-price">3 600 000</span> UZS</p>
+                    </div>
+                    <button onclick="alert('Xarid jarayoniga o\'tilmoqda!')" class="bg-amber-500 hover:bg-amber-600 text-white font-bold py-2 px-5 rounded-lg shadow-md transition text-sm">
+                        <i class="fa-solid fa-cart-shopping mr-1"></i> Xarid
+                    </button>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // DOM Elementlar
+        const carpetObj = document.getElementById('carpet-object');
+        const scaleSlider = document.getElementById('scale-slider');
+        const ySlider = document.getElementById('y-slider');
+        const adjustPanel = document.getElementById('adjust-panel');
+        const videoStream = document.getElementById('camera-stream');
+        
+        let currentScale = 1;
+        let currentY = -10;
+        let isCameraOn = false;
+        let streamObj = null;
+
+        // Gilamni 3D perspektivada siljitish
+        function applyTransform() {
+            carpetObj.style.transform = `translate(-50%, ${currentY}%) perspective(800px) rotateX(65deg) scale(${currentScale})`;
+        }
+
+        scaleSlider.addEventListener('input', (e) => {
+            currentScale = e.target.value;
+            applyTransform();
+        });
+
+        ySlider.addEventListener('input', (e) => {
+            currentY = e.target.value;
+            applyTransform();
+        });
+
+        // Sozlamalar panelini ochish/yopish
+        function toggleAdjust() {
+            if (adjustPanel.classList.contains('hidden')) {
+                adjustPanel.classList.remove('hidden');
+                setTimeout(() => {
+                    adjustPanel.classList.remove('opacity-0', 'translate-y-4');
+                }, 10);
+            } else {
+                adjustPanel.classList.add('opacity-0', 'translate-y-4');
+                setTimeout(() => {
+                    adjustPanel.classList.add('hidden');
+                }, 300);
+            }
+        }
+
+        // Gilamni almashtirish
+        function changeCarpet(imageUrl, name, price, element) {
+            carpetObj.style.backgroundImage = `url('${imageUrl}')`;
+            document.getElementById('carpet-name').innerText = name + ' Gilam';
+            document.getElementById('carpet-price').innerText = price;
+
+            document.querySelectorAll('.carpet-thumb').forEach(thumb => {
+                thumb.classList.remove('border-blue-900');
+                thumb.classList.add('border-transparent');
+            });
+            element.classList.remove('border-transparent');
+            element.classList.add('border-blue-900');
+            
+            // Animatsiya effekti
+            carpetObj.style.transition = 'all 0.3s ease';
+            carpetObj.style.transform = `translate(-50%, ${currentY}%) perspective(800px) rotateX(65deg) scale(${parseFloat(currentScale) + 0.05})`;
+            setTimeout(() => {
+                applyTransform();
+            }, 150);
+        }
+
+        // Kamerani ishga tushirish (WebRTC)
+        async function toggleCamera() {
+            const camBtn = document.getElementById('cam-btn');
+            const fallback = document.getElementById('fallback-overlay');
+
+            if (!isCameraOn) {
+                try {
+                    // Telefonning orqa kamerasini so'rash
+                    streamObj = await navigator.mediaDevices.getUserMedia({ 
+                        video: { facingMode: 'environment' } 
+                    });
+                    videoStream.srcObject = streamObj;
+                    videoStream.style.display = 'block';
+                    
+                    fallback.style.background = 'rgba(0,0,0,0.1)';
+                    camBtn.classList.add('bg-amber-500', 'text-white');
+                    camBtn.classList.remove('text-blue-900');
+                    isCameraOn = true;
+                    
+                } catch (err) {
+                    console.error("Kameraga ulanib bo'lmadi:", err);
+                    alert("Kameraga ulanishda xatolik! Brauzer sozlamalaridan kameraga ruxsat bering yoki Localhost orqali kiring.");
+                }
+            } else {
+                // Kamerani o'chirish
+                if (streamObj) {
+                    streamObj.getTracks().forEach(track => track.stop());
+                }
+                videoStream.style.display = 'none';
+                fallback.style.background = 'linear-gradient(to bottom, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.5) 100%)';
+                
+                camBtn.classList.remove('bg-amber-500', 'text-white');
+                camBtn.classList.add('text-blue-900');
+                isCameraOn = false;
+            }
+        }
+
+        // Dastlabki sozlama
+        applyTransform();
+    </script>
+</body>
+</html>
